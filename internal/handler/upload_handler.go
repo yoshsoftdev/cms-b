@@ -2,9 +2,10 @@ package handler
 
 import (
 	"fmt"
-	"os"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,12 +13,14 @@ import (
 
 type UploadHandler struct {
 	storageBaseURL string
+	storageDomain  string
 	storageDir     string
 }
 
-func NewUploadHandler(storageBaseURL, storageDir string) *UploadHandler {
+func NewUploadHandler(storageBaseURL, storageDomain, storageDir string) *UploadHandler {
 	return &UploadHandler{
 		storageBaseURL: storageBaseURL,
+		storageDomain:  strings.TrimSpace(storageDomain),
 		storageDir:     storageDir,
 	}
 }
@@ -39,6 +42,29 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 		return
 	}
-	url := fmt.Sprintf("%s/%s", h.storageBaseURL, filename)
+	url := fmt.Sprintf("%s/%s", h.resolveStorageBaseURL(c), filename)
 	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filename})
+}
+
+func (h *UploadHandler) resolveStorageBaseURL(c *gin.Context) string {
+	if h.storageDomain != "" {
+		return strings.TrimRight(h.storageDomain, "/") + "/static/uploads"
+	}
+	base := strings.TrimSpace(h.storageBaseURL)
+	if base != "" && !strings.EqualFold(base, "auto") {
+		return strings.TrimRight(base, "/")
+	}
+	scheme := c.Request.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	host := c.Request.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	return fmt.Sprintf("%s://%s/static/uploads", scheme, host)
 }

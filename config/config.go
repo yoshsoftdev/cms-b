@@ -15,6 +15,7 @@ type Config struct {
 	AdminUser        string
 	AdminPass        string
 	StorageURL       string
+	StorageDomain    string
 	StorageDir       string
 	DeployScriptPath string
 }
@@ -28,7 +29,8 @@ func Load() Config {
 		JWTSecret:        getEnv("JWT_SECRET", "super-secret-change-me"),
 		AdminUser:        getEnv("ADMIN_USER", "admin"),
 		AdminPass:        getEnv("ADMIN_PASS", "admin123"),
-		StorageURL:       getEnv("STORAGE_BASE_URL", "/static/uploads"),
+		StorageURL:       getEnv("STORAGE_BASE_URL", "auto"),
+		StorageDomain:    getEnv("STORAGE_DOMAIN", ""),
 		StorageDir:       getEnv("STORAGE_DIR", "static/uploads"),
 		DeployScriptPath: getEnv("DEPLOY_SCRIPT_PATH", ""),
 	}

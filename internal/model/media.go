@@ -9,9 +9,11 @@ import (
 
 type Media struct {
 	ID        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
+	Name      string    `json:"name" gorm:"size:255;not null;default:''"`
 	URL       string    `json:"url" gorm:"size:500;not null"`
 	AltText   string    `json:"alt_text" gorm:"size:255"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (m *Media) BeforeCreate(_ *gorm.DB) error {

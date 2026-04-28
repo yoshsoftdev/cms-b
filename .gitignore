@@ -35,3 +35,5 @@ coverage.txt
 static/
 
 cms.db
+*.db
+*.databases
