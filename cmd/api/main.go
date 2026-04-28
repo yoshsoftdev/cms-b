@@ -25,7 +25,7 @@ func main() {
 	}
 
 	postService := service.NewPostService(repository.NewPostRepository(database))
-	contentService := service.NewContentService(repository.NewContentRepository(database))
+	contentService := service.NewContentService(repository.NewContentRepository(database), cfg.DeployScriptPath)
 	authorService := service.NewAuthorService(repository.NewAuthorRepository(database))
 	taxonomyService := service.NewTaxonomyService(repository.NewTaxonomyRepository(database))
 	taxonomyCleanService := service.NewTaxonomyCleanService(repository.NewTaxonomyCleanRepository(database))
@@ -40,9 +40,10 @@ func main() {
 	taxonomyCleanHandler := handler.NewTaxonomyCleanHandler(taxonomyCleanService)
 	pageHandler := handler.NewPageHandler(pageService)
 	navHandler := handler.NewNavigationHandler(navService)
-	uploadHandler := handler.NewUploadHandler(cfg.StorageURL)
+	uploadHandler := handler.NewUploadHandler(cfg.StorageURL, cfg.StorageDir)
 
 	r := gin.Default()
+	r.Static("/static", "./static")
 
 	r.GET("/posts", postHandler.ListPublic)
 	r.GET("/contents", contentHandler.List)

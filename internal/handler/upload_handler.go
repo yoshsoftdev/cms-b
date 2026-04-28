@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"os"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -11,10 +12,14 @@ import (
 
 type UploadHandler struct {
 	storageBaseURL string
+	storageDir     string
 }
 
-func NewUploadHandler(storageBaseURL string) *UploadHandler {
-	return &UploadHandler{storageBaseURL: storageBaseURL}
+func NewUploadHandler(storageBaseURL, storageDir string) *UploadHandler {
+	return &UploadHandler{
+		storageBaseURL: storageBaseURL,
+		storageDir:     storageDir,
+	}
 }
 
 func (h *UploadHandler) Upload(c *gin.Context) {
@@ -24,6 +29,16 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 		return
 	}
 	ext := filepath.Ext(file.Filename)
-	url := fmt.Sprintf("%s/%d%s", h.storageBaseURL, time.Now().UnixNano(), ext)
-	c.JSON(http.StatusOK, gin.H{"url": url, "filename": file.Filename})
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	if err := os.MkdirAll(h.storageDir, 0o755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare upload directory"})
+		return
+	}
+	targetPath := filepath.Join(h.storageDir, filename)
+	if err := c.SaveUploadedFile(file, targetPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+		return
+	}
+	url := fmt.Sprintf("%s/%s", h.storageBaseURL, filename)
+	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filename})
 }

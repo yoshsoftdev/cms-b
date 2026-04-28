@@ -3,15 +3,24 @@ package service
 import (
 	"cms/internal/model"
 	"cms/internal/repository"
+	"context"
+	"log"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type ContentService struct{ repo *repository.ContentRepository }
+type ContentService struct {
+	repo             *repository.ContentRepository
+	deployScriptPath string
+}
 
-func NewContentService(repo *repository.ContentRepository) *ContentService { return &ContentService{repo: repo} }
+func NewContentService(repo *repository.ContentRepository, deployScriptPath string) *ContentService {
+	return &ContentService{repo: repo, deployScriptPath: strings.TrimSpace(deployScriptPath)}
+}
 
 func (s *ContentService) ListByLocale(q repository.ContentQuery) ([]repository.ContentListItem, int64, error) {
 	return s.repo.ListByLocale(q)
@@ -130,8 +139,38 @@ func (s *ContentService) persist(id string, req CreateContentRequest) error {
 		TaxonomyIDs:  taxonomyIDs,
 		MediaLinks:   mediaLinks,
 	}
+	var err error
 	if id == "" {
-		return s.repo.Create(input)
+		err = s.repo.Create(input)
+	} else {
+		err = s.repo.Update(id, input)
 	}
-	return s.repo.Update(id, input)
+	if err != nil {
+		return err
+	}
+	if content.Status == model.StatusPublished {
+		s.runDeployScript()
+	}
+	return nil
+}
+
+func (s *ContentService) runDeployScript() {
+	if s.deployScriptPath == "" {
+		return
+	}
+	if filepath.Ext(s.deployScriptPath) != ".sh" {
+		log.Printf("deploy skipped: DEPLOY_SCRIPT_PATH must point to .sh file, got: %s", s.deployScriptPath)
+		return
+	}
+	go func(scriptPath string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, scriptPath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("deploy script failed (%s): %v\n%s", scriptPath, err, string(out))
+			return
+		}
+		log.Printf("deploy script executed: %s", scriptPath)
+	}(s.deployScriptPath)
 }
