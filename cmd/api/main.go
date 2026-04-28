@@ -25,13 +25,19 @@ func main() {
 	}
 
 	postService := service.NewPostService(repository.NewPostRepository(database))
+	contentService := service.NewContentService(repository.NewContentRepository(database))
+	authorService := service.NewAuthorService(repository.NewAuthorRepository(database))
 	taxonomyService := service.NewTaxonomyService(repository.NewTaxonomyRepository(database))
+	taxonomyCleanService := service.NewTaxonomyCleanService(repository.NewTaxonomyCleanRepository(database))
 	pageService := service.NewPageService(repository.NewPageRepository(database))
 	navService := service.NewNavigationService(repository.NewGormNavigationRepository(database))
 
 	authHandler := handler.NewAuthHandler(authService)
 	postHandler := handler.NewPostHandler(postService, taxonomyService)
+	contentHandler := handler.NewContentHandler(contentService)
+	authorHandler := handler.NewAuthorHandler(authorService)
 	taxonomyHandler := handler.NewTaxonomyHandler(taxonomyService)
+	taxonomyCleanHandler := handler.NewTaxonomyCleanHandler(taxonomyCleanService)
 	pageHandler := handler.NewPageHandler(pageService)
 	navHandler := handler.NewNavigationHandler(navService)
 	uploadHandler := handler.NewUploadHandler(cfg.StorageURL)
@@ -39,6 +45,11 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/posts", postHandler.ListPublic)
+	r.GET("/contents", contentHandler.List)
+	r.GET("/contents/:id", contentHandler.GetByID)
+	r.GET("/contents/slug/:slug", contentHandler.GetBySlug)
+	r.GET("/taxonomies", taxonomyCleanHandler.List)
+	r.GET("/authors", authorHandler.List)
 	r.GET("/posts/:slug", postHandler.GetBySlug)
 	r.GET("/pages/:slug", pageHandler.GetBySlug)
 	r.GET("/navigation", navHandler.GetTree)
@@ -48,6 +59,10 @@ func main() {
 	admin.Use(middleware.JWT(authService))
 
 	admin.GET("/posts", postHandler.ListAdmin)
+	admin.GET("/contents/:id", contentHandler.GetByID)
+	admin.POST("/contents", contentHandler.Create)
+	admin.PUT("/contents/:id", contentHandler.Update)
+	admin.DELETE("/contents/:id", contentHandler.Delete)
 	admin.GET("/posts/:id", postHandler.GetByID)
 	admin.GET("/posts/:id/seo-audit", postHandler.GetSEOAuditByID)
 	admin.GET("/posts/slug/:slug", postHandler.GetAdminBySlug)
@@ -56,6 +71,10 @@ func main() {
 	admin.PUT("/posts/:id", postHandler.Update)
 	admin.DELETE("/posts/:id", postHandler.Delete)
 	admin.GET("/taxonomies", taxonomyHandler.List)
+	admin.GET("/authors", authorHandler.List)
+	admin.POST("/authors", authorHandler.Create)
+	admin.PUT("/authors/:id", authorHandler.Update)
+	admin.DELETE("/authors/:id", authorHandler.Delete)
 
 	admin.GET("/pages", pageHandler.ListAdmin)
 	admin.GET("/pages/:id", pageHandler.GetByID)

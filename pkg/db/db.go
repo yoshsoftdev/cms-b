@@ -27,7 +27,22 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
 
-	if err := db.AutoMigrate(&model.Post{}, &model.Page{}, &model.Navigation{}, &model.TaxonomyTerm{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.Post{},
+		&model.Page{},
+		&model.Navigation{},
+		&model.TaxonomyTerm{},
+		&model.User{},
+		&model.Author{},
+		&model.ContentRecord{},
+		&model.ContentTranslation{},
+		&model.Taxonomy{},
+		&model.TaxonomyTranslation{},
+		&model.ContentTaxonomy{},
+		&model.Media{},
+		&model.ContentMedia{},
+		&model.NavigationTranslation{},
+	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
