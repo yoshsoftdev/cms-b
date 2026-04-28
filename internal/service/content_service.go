@@ -149,28 +149,40 @@ func (s *ContentService) persist(id string, req CreateContentRequest) error {
 		return err
 	}
 	if content.Status == model.StatusPublished {
-		s.runDeployScript()
+		entityID := id
+		if entityID == "" {
+			entityID = content.ID.String()
+		}
+		log.Printf("[publish] content published (id=%s, slug=%s, status=%s)", entityID, content.Slug, content.Status)
+		s.runDeployScript(entityID, content.Slug)
 	}
 	return nil
 }
 
-func (s *ContentService) runDeployScript() {
+func (s *ContentService) runDeployScript(contentID, slug string) {
 	if s.deployScriptPath == "" {
+		log.Printf("[deploy] skipped: DEPLOY_SCRIPT_PATH is empty (content_id=%s, slug=%s)", contentID, slug)
 		return
 	}
+	log.Printf("[deploy] trigger requested for content_id=%s slug=%s", contentID, slug)
+	log.Printf("[deploy] script path: %s", s.deployScriptPath)
 	if filepath.Ext(s.deployScriptPath) != ".sh" {
-		log.Printf("deploy skipped: DEPLOY_SCRIPT_PATH must point to .sh file, got: %s", s.deployScriptPath)
+		log.Printf("[deploy] skipped: DEPLOY_SCRIPT_PATH must point to .sh file, got: %s", s.deployScriptPath)
 		return
 	}
 	go func(scriptPath string) {
+		log.Printf("[deploy] started: %s", scriptPath)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, scriptPath)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("deploy script failed (%s): %v\n%s", scriptPath, err, string(out))
+			log.Printf("[deploy] failed (%s): %v\n%s", scriptPath, err, string(out))
 			return
 		}
-		log.Printf("deploy script executed: %s", scriptPath)
+		log.Printf("[deploy] success: %s", scriptPath)
+		if len(out) > 0 {
+			log.Printf("[deploy] output:\n%s", string(out))
+		}
 	}(s.deployScriptPath)
 }
