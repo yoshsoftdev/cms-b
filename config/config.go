@@ -1,7 +1,10 @@
 package config
 
 import (
+	"bufio"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -17,6 +20,7 @@ type Config struct {
 }
 
 func Load() Config {
+	loadEnvFiles(".env", ".env.local")
 	return Config{
 		AppPort:          getEnv("APP_PORT", "8080"),
 		DBDriver:         getEnv("DB_DRIVER", "sqlite"),
@@ -27,6 +31,46 @@ func Load() Config {
 		StorageURL:       getEnv("STORAGE_BASE_URL", "/static/uploads"),
 		StorageDir:       getEnv("STORAGE_DIR", "static/uploads"),
 		DeployScriptPath: getEnv("DEPLOY_SCRIPT_PATH", ""),
+	}
+}
+
+func loadEnvFiles(names ...string) {
+	for _, name := range names {
+		loadEnvFile(name)
+	}
+}
+
+func loadEnvFile(name string) {
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		if key == "" {
+			continue
+		}
+		value := strings.TrimSpace(parts[1])
+		value = strings.Trim(value, `"'`)
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		_ = os.Setenv(key, value)
 	}
 }
 
