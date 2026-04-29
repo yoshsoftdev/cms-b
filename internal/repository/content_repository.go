@@ -45,22 +45,26 @@ type ContentQuery struct {
 }
 
 type ContentListItem struct {
-	ID        uuid.UUID           `json:"id"`
-	Type      model.ContentType   `json:"type"`
-	Slug      string              `json:"slug"`
-	Status    model.ContentStatus `json:"status"`
-	PublishAt *time.Time          `json:"publish_at"`
-	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
-	AuthorID  *uuid.UUID          `json:"author_id"`
-	Locale    model.LocaleCode    `json:"locale"`
-	Title     string              `json:"title"`
-	Content   string              `json:"content"`
-	ContentJSON string            `json:"content_json"`
-	Excerpt   string              `json:"excerpt"`
-	MetaTitle string              `json:"meta_title"`
-	MetaDescription string        `json:"meta_description"`
-	Keywords  string              `json:"keywords"`
+	ID              uuid.UUID             `json:"id"`
+	Type            model.ContentType     `json:"type"`
+	Slug            string                `json:"slug"`
+	Status          model.ContentStatus   `json:"status"`
+	PublishAt       *time.Time            `json:"publish_at"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
+	AuthorID        *uuid.UUID            `json:"author_id"`
+	Locale          model.LocaleCode      `json:"locale"`
+	Title           string                `json:"title"`
+	Content         string                `json:"content"`
+	ContentJSON     string                `json:"content_json"`
+	Excerpt         string                `json:"excerpt"`
+	MetaTitle       string                `json:"meta_title"`
+	MetaDescription string                `json:"meta_description"`
+	Keywords        string                `json:"keywords"`
+	// Legacy SEO category from posts table (same slug as contents); not all migrations filled content_taxonomies.
+	Category string `json:"category,omitempty" gorm:"column:legacy_category"`
+	// Filled by attachTaxonomiesToList; must be ignored by GORM Scan (slice is not a DB column).
+	Taxonomies []ContentTaxonomyItem `json:"taxonomies" gorm:"-"`
 }
 
 func (r *ContentRepository) ListByLocale(q ContentQuery) ([]ContentListItem, int64, error) {
@@ -76,6 +80,7 @@ func (r *ContentRepository) ListByLocale(q ContentQuery) ([]ContentListItem, int
 
 	base := r.db.Table("contents c").
 		Joins("JOIN content_translations ct ON ct.content_id = c.id AND ct.locale = ?", q.Locale).
+		Joins("LEFT JOIN posts p ON p.slug = c.slug AND p.deleted_at IS NULL").
 		Where("c.deleted_at IS NULL")
 
 	if q.Type != "" {
@@ -97,7 +102,8 @@ func (r *ContentRepository) ListByLocale(q ContentQuery) ([]ContentListItem, int
 	var rows []ContentListItem
 	err := base.Select(
 		"c.id, c.type, c.slug, c.status, c.publish_at, c.created_at, c.updated_at, c.author_id," +
-			"ct.locale, ct.title, ct.content, ct.content_json, ct.excerpt, ct.meta_title, ct.meta_description, ct.keywords",
+			"ct.locale, ct.title, ct.content, ct.content_json, ct.excerpt, ct.meta_title, ct.meta_description, ct.keywords," +
+			"p.category AS legacy_category",
 	).
 		Order("c.created_at DESC").
 		Offset((q.Page - 1) * q.Limit).
@@ -106,7 +112,44 @@ func (r *ContentRepository) ListByLocale(q ContentQuery) ([]ContentListItem, int
 	if err != nil {
 		return nil, 0, err
 	}
+	r.attachTaxonomiesToList(rows, q.Locale)
 	return rows, total, nil
+}
+
+func (r *ContentRepository) attachTaxonomiesToList(rows []ContentListItem, locale string) {
+	if len(rows) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	type taxScan struct {
+		ContentID uuid.UUID `gorm:"column:content_id"`
+		ID        uuid.UUID `gorm:"column:id"`
+		Type      string    `gorm:"column:type"`
+		Name      string    `gorm:"column:name"`
+	}
+	var scanned []taxScan
+	_ = r.db.Table("content_taxonomies AS ct").
+		Select("ct.content_id, t.id AS id, t.type AS type, tt.name AS name").
+		Joins("JOIN taxonomies t ON t.id = ct.taxonomy_id").
+		Joins("JOIN taxonomy_translations tt ON tt.taxonomy_id = t.id AND tt.locale = ?", locale).
+		Where("ct.content_id IN ?", ids).
+		Scan(&scanned)
+	byContent := make(map[uuid.UUID][]ContentTaxonomyItem)
+	for _, s := range scanned {
+		byContent[s.ContentID] = append(byContent[s.ContentID], ContentTaxonomyItem{
+			ID: s.ID, Type: s.Type, Name: s.Name,
+		})
+	}
+	for i := range rows {
+		if v, ok := byContent[rows[i].ID]; ok {
+			rows[i].Taxonomies = v
+		} else {
+			rows[i].Taxonomies = []ContentTaxonomyItem{}
+		}
+	}
 }
 
 type CreateContentInput struct {
@@ -180,6 +223,8 @@ type ContentDetail struct {
 	Translations []model.ContentTranslation `json:"translations,omitempty"`
 	Taxonomies   []ContentTaxonomyItem      `json:"taxonomies"`
 	Media        []ContentMediaItem         `json:"media"`
+	// Same slug row in legacy posts table (SEO category while content_taxonomies may be empty).
+	Category string `json:"category,omitempty"`
 }
 
 func (r *ContentRepository) GetByIDWithLocale(id, locale string) (*ContentDetail, error) {
@@ -233,6 +278,11 @@ func (r *ContentRepository) GetByIDWithLocale(id, locale string) (*ContentDetail
 		Joins("JOIN media m ON m.id = cm.media_id").
 		Where("cm.content_id = ?", c.ID).
 		Scan(&out.Media).Error
+
+	var legacyPost model.Post
+	if err := r.db.First(&legacyPost, "slug = ? AND deleted_at IS NULL", c.Slug).Error; err == nil {
+		out.Category = strings.TrimSpace(legacyPost.Category)
+	}
 
 	return out, nil
 }
